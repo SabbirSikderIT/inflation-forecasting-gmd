@@ -1,0 +1,48 @@
+# Data files (too large for GitHub)
+data/*.csv
+data/*.dta
+*.csv
+!results/*.csv
+
+# Model checkpoints
+*.pkl
+*.pt
+*.pth
+*.h5
+models/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Colab
+sample_data/
+
+# Large files
+*.zip
+*.tar.gz

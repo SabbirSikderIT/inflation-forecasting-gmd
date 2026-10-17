@@ -1,0 +1,35 @@
+
+KEY FINDINGS
+============
+
+1. DATA & METHODOLOGY
+   • GMD 2025: 52 countries, 1970-2025 (55 years)
+   • 5-year horizon, 10-year window, 8 features
+   • 2-fold temporal cross-validation (leakage-free)
+   • 1,757 total samples
+
+2. PERSISTENCE DOMINATES
+   • Mean R² across folds: 0.66 (best)
+   • Consistent, robust across periods
+   • Matches classic Atkeson-Ohanian (2001)
+
+3. TREE-BASED MODELS: HIGH VARIANCE
+   • Random Forest:  0.60 → 0.41 (fold-1 vs fold-2)
+   • XGBoost:        0.56 → 0.47
+   • Gradient Boost: 0.53 → 0.45
+   • Period-dependent performance
+
+4. DEEP LEARNING: SAMPLE SIZE SENSITIVE
+   • CNN-LSTM: 0.12 (775 samples) → 0.47 (1,015 samples)
+   • Needs >1000 samples for competitive performance
+   • Best in Fold 2, worst in Fold 1
+
+5. LINEAR MODELS FAIL
+   • Ridge: R² < -10^9 (catastrophic)
+   • Log-transform sensitivity
+   • Nonlinearity breaks linear models
+
+6. PRACTICAL IMPLICATIONS
+   • Persistence is safest benchmark
+   • ML performance period-dependent
+   • Deep learning needs more data
