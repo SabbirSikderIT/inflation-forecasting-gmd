@@ -8,7 +8,6 @@ data/*.dta
 *.pt
 *.pth
 *.h5
-models/
 
 # Python
 __pycache__/
