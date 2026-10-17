@@ -5,7 +5,6 @@ data/*.dta
 !results/*.csv
 
 # Model checkpoints
-*.pkl
 *.pt
 *.pth
 *.h5
