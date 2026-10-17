@@ -105,6 +105,13 @@ STEP 3 - Host the FRONTEND on Netlify
       https://inflation-forecaster.netlify.app
 
 
+NOTE - VERCEL: the frontend can also be hosted on Vercel instead of Netlify
+(Framework Vite, Root Directory app/frontend, Build Command npm run build,
+Output Directory dist). The backend address is already stored in
+app/frontend/.env.production (VITE_API_URL), so no environment variable is
+needed on Netlify/Vercel unless the Render URL changes. Whichever host you use,
+its exact address must be put into CORS_ORIGINS on Render (Step 4).
+
 -----------------------------------------------------------------------
 STEP 4 - Allow the frontend to talk to the backend (CORS)
 -----------------------------------------------------------------------
