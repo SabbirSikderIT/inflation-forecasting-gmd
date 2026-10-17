@@ -1,0 +1,207 @@
+HOW TO HOST THE INFLATION FORECASTER (step by step)
+=====================================================
+
+The app has two parts, so it is hosted in two places:
+
+  BACKEND  (Python / FastAPI)  ->  Render.com      (free plan is enough to start)
+  FRONTEND (React / Vite)      ->  Netlify.com     (free plan)
+
+Order matters: 1) put the code on GitHub, 2) host the backend, 3) host the
+frontend, 4) tell the backend the frontend's address.
+
+You need: a GitHub account (SabbirSikderIT), and free accounts on Render and
+Netlify (you can sign in to both with your GitHub account).
+
+
+-----------------------------------------------------------------------
+STEP 1 - Put the code on GitHub
+-----------------------------------------------------------------------
+The folder app/ must be in your repository
+SabbirSikderIT/inflation-forecasting-gmd (branch: main).
+
+Check that these files are included (they are needed on the server):
+  app/backend/models/random_forest_fold1.pkl
+  app/backend/models/xgboost_fold1.json
+  app/backend/artifacts/preprocessing.json
+  app/backend/artifacts/benchmark.json
+  app/backend/samples/sample_USA.csv (and GBR, IND)
+
+Do NOT upload: backend/venv, frontend/node_modules, inflation.db
+(app/.gitignore already excludes them).
+
+In a terminal, in the repository folder:
+  git config user.name  "SabbirSikderIT"
+  git config user.email "ssikder2310483@bscse.uiu.ac.bd"
+  git add app
+  git commit -m "Add inflation forecast dashboard"
+  git push origin main
+When Git asks for a password, paste a NEW personal access token (GitHub ->
+Settings -> Developer settings -> Personal access tokens, scope "repo").
+Never share a token in chat or save it in a file in the project.
+
+
+-----------------------------------------------------------------------
+STEP 2 - Host the BACKEND on Render
+-----------------------------------------------------------------------
+1. Go to https://render.com and sign in with GitHub.
+2. Click  New +  ->  Web Service  ->  choose the repository
+   inflation-forecasting-gmd  ->  Connect.
+3. Fill in the form exactly like this:
+
+     Name ............ inflation-forecast-api   (any name; it becomes the URL)
+     Region .......... the one closest to your users
+     Branch .......... main
+     Root Directory .. app/backend
+     Runtime ......... Python 3
+     Build Command ... pip install -r requirements.txt
+     Start Command ... uvicorn main:app --host 0.0.0.0 --port $PORT
+     Instance Type ... Free (or Starter, see the notes at the end)
+
+4. Open "Advanced" -> "Add Environment Variable":
+
+     PYTHON_VERSION = 3.13.5
+
+   This is REQUIRED. The saved Random Forest needs scikit-learn 1.6.1, which
+   does not work on Python 3.14. (If Render rejects 3.13.5, use any 3.13.x or
+   3.12.x version it lists.)
+
+5. Click  Create Web Service. The first build takes a few minutes
+   (it installs pandas, scikit-learn, xgboost).
+6. When the log says "Application startup complete", copy the service URL,
+   for example:   https://inflation-forecast-api.onrender.com
+7. Test it: open
+      https://inflation-forecast-api.onrender.com/api/health
+   You must see:  "status":"ok" and "models_available":
+   ["RandomForest","XGBoost","Persistence"].
+   (Interactive API docs are at  /docs .)
+
+
+-----------------------------------------------------------------------
+STEP 3 - Host the FRONTEND on Netlify
+-----------------------------------------------------------------------
+1. Go to https://www.netlify.com and sign in with GitHub.
+2. Click  Add new site  ->  Import an existing project  ->  GitHub  ->
+   choose the repository inflation-forecasting-gmd.
+3. Configure the build settings:
+
+     Branch to deploy ..... main
+     Base directory ....... app/frontend
+     Build command ........ npm run build
+     Publish directory .... dist
+     (if Netlify shows the full path, use app/frontend/dist)
+
+4. Click "Add environment variables" (or later: Site configuration ->
+   Environment variables) and add TWO variables:
+
+     VITE_API_URL = https://inflation-forecast-api.onrender.com
+                    (your Render URL from Step 2, with NO slash at the end)
+     NODE_VERSION = 20
+
+   Important: VITE_API_URL is built into the site. If you change it later you
+   must redeploy (Deploys -> Trigger deploy -> Clear cache and deploy site).
+5. Click  Deploy. When it finishes Netlify shows your site address, for example:
+      https://random-name-123.netlify.app
+   You can change it under Site configuration -> Change site name, e.g.
+      https://inflation-forecaster.netlify.app
+
+
+-----------------------------------------------------------------------
+STEP 4 - Allow the frontend to talk to the backend (CORS)
+-----------------------------------------------------------------------
+Without this step the site loads but shows "API offline".
+
+1. Render -> your web service -> Environment -> Add Environment Variable:
+
+     CORS_ORIGINS = https://inflation-forecaster.netlify.app
+
+   (your exact Netlify address, no slash at the end; several addresses can be
+   separated with commas, e.g. when you add your own domain later).
+2. Save. Render restarts the service automatically.
+
+
+-----------------------------------------------------------------------
+STEP 5 - Check that everything works
+-----------------------------------------------------------------------
+1. Open your Netlify address. The badge at the top right must say "API online".
+2. Click "United States". You should get about 2.21% (Random Forest).
+3. Upload your own CSV and try all three models.
+4. If the badge says "API offline", see "Troubleshooting" below.
+
+
+-----------------------------------------------------------------------
+UPDATING THE SITE LATER
+-----------------------------------------------------------------------
+Change the code, then:  git add . ; git commit -m "..." ; git push origin main
+Render and Netlify redeploy automatically on every push to main.
+
+
+-----------------------------------------------------------------------
+IMPORTANT NOTES
+-----------------------------------------------------------------------
+* FREE PLAN SLEEPS: a free Render service goes to sleep after ~15 minutes
+  without visitors. The next visit waits about 1-2 minutes while it wakes up
+  and loads the models. The page shows "API offline" until then; refresh
+  after a minute. A paid instance (Starter) stays awake.
+
+* MEMORY: the models need roughly 400-500 MB of RAM. If Render reports
+  "out of memory" on the free 512 MB plan, switch to the Starter instance.
+
+* HISTORY IS NOT PERMANENT: "Recent predictions" is stored in a SQLite file
+  (backend/inflation.db). On Render's free plan the disk is erased on every
+  redeploy and restart, so the history resets. To keep it, either add a
+  Render Disk (paid) mounted next to the backend, or move to a hosted
+  PostgreSQL database (change DATABASE_URL in backend/database.py).
+
+* ANYONE CAN USE THE SITE: there is no login. Everybody sees the shared
+  "Recent predictions" list. For a public site consider removing that list
+  or adding authentication.
+
+* The Random Forest is loaded with Python's pickle. Only ever deploy model
+  files that you created yourself.
+
+
+-----------------------------------------------------------------------
+TROUBLESHOOTING
+-----------------------------------------------------------------------
+Badge says "API offline"
+   - Open  <render-url>/api/health  in the browser. If it does not load, the
+     backend is asleep or crashed: read Render -> Logs.
+   - If the health URL works but the site still says offline: VITE_API_URL
+     is wrong (typo, trailing slash, http instead of https) -> fix it in
+     Netlify and redeploy.
+   - Browser console (F12) shows "blocked by CORS policy": CORS_ORIGINS on
+     Render is missing or does not exactly match the Netlify address.
+
+Render build fails on scikit-learn / numpy
+   - PYTHON_VERSION is not set to a 3.13.x (or older) version.
+
+health shows "models_failed"
+   - The model files were not pushed to GitHub (Step 1) or scikit-learn is
+     not 1.6.1. Re-check Step 1 and the Python version.
+
+Render "Port scan timeout"
+   - Start Command must contain  --host 0.0.0.0 --port $PORT  exactly.
+
+Uploading a CSV gives an error message
+   - That is the validation working: the CSV needs the columns
+     year, infl, rGDP_pc, unemp, govdebt_GDP, CA_GDP, USDfx, REER, pop and at
+     least 10 consecutive years. Use the "Download CSV template" button.
+
+
+-----------------------------------------------------------------------
+ALTERNATIVE: ONE SERVER (VPS) INSTEAD OF RENDER + NETLIFY
+-----------------------------------------------------------------------
+On any Linux server (Ubuntu) with Python 3.13 and Node 18+:
+  1. git clone the repository
+  2. Backend:  cd app/backend
+               python3.13 -m venv venv && source venv/bin/activate
+               pip install -r requirements.txt
+               CORS_ORIGINS=https://yourdomain.com \
+               uvicorn main:app --host 127.0.0.1 --port 8000
+     (run it as a service with systemd so it restarts automatically)
+  3. Frontend: cd ../frontend && npm install && npm run build
+     The folder frontend/dist is the finished website.
+  4. Install nginx: serve frontend/dist as the site root and forward the path
+     /api/ to http://127.0.0.1:8000 . In this setup do NOT set VITE_API_URL
+     (the site and the API share one address, so no CORS is needed).
+  5. Add HTTPS with Let's Encrypt (certbot).

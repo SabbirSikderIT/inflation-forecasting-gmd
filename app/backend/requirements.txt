@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pandas>=2.2
+numpy>=1.26
+# random_forest_fold1.pkl was written by scikit-learn 1.6.1 - keep this exact version
+# (1.6.1 ships wheels for Python 3.10-3.13, not 3.14)
+scikit-learn==1.6.1
+xgboost>=2.1,<4
+sqlalchemy>=2.0
+python-multipart>=0.0.9
+httpx>=0.27  # only for tests
