@@ -64,8 +64,8 @@ def _record_to_dict(r: PredictionRecord) -> dict:
     }
 
 
-# 🚨 NEW: UptimeRobot-এর জন্য রুট হেলথ চেক
-@app.get("/")
+# 🚨 UPDATED: GET এবং HEAD দুটো মেথডই সাপোর্ট করবে UptimeRobot-এর জন্য
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"status": "ok", "message": "Inflation Forecast API is running"}
 
