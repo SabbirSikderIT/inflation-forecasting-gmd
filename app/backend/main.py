@@ -64,6 +64,12 @@ def _record_to_dict(r: PredictionRecord) -> dict:
     }
 
 
+# 🚨 NEW: UptimeRobot-এর জন্য রুট হেলথ চেক
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "Inflation Forecast API is running"}
+
+
 @app.get("/api/health")
 def health():
     return {
