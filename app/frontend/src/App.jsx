@@ -8,13 +8,23 @@ import {
   getModels, getSampleFile, getSamples, predict,
 } from './api'
 
-const MODEL_COLORS = { RandomForest: '#2f855a', XGBoost: '#c05621', Persistence: '#3182ce' }
-const STUDY_COLORS = { 'Random Forest': MODEL_COLORS.RandomForest, XGBoost: MODEL_COLORS.XGBoost, Persistence: MODEL_COLORS.Persistence }
+const MODEL_COLORS = { 
+  RandomForest: '#2f855a', 
+  XGBoost: '#c05621', 
+  Persistence: '#3182ce',
+  'CNN-LSTM': '#805ad5' // পার্পল কালার
+}
+const STUDY_COLORS = { 
+  'Random Forest': MODEL_COLORS.RandomForest, 
+  XGBoost: MODEL_COLORS.XGBoost, 
+  Persistence: MODEL_COLORS.Persistence,
+  'CNN-LSTM': MODEL_COLORS['CNN-LSTM']
+}
 const COUNTRY = { USA: 'United States', GBR: 'United Kingdom', IND: 'India' }
 const fmt = (v, d = 2) => (v === null || v === undefined ? '—' : Number(v).toFixed(d))
 
 export default function App() {
-  const [health, setHealth] = useState(null) // null = checking, false = offline
+  const [health, setHealth] = useState(null)
   const [info, setInfo] = useState(null)
   const [samples, setSamples] = useState([])
   const [history, setHistory] = useState([])
@@ -34,7 +44,6 @@ export default function App() {
     getSamples().then(setSamples).catch(() => {})
     refreshHistory()
   }, [refreshHistory])
-
 
   const run = useCallback(async (f, m) => {
     setError('')
@@ -68,7 +77,6 @@ export default function App() {
     }
   }, [run, model])
 
-  // Shareable demo link, e.g. http://localhost:5173/#demo=USA
   useEffect(() => {
     const iso = new URLSearchParams(window.location.hash.slice(1)).get('demo')
     if (iso && /^[A-Za-z]{3}$/.test(iso) && !demoStarted.current) {
@@ -194,7 +202,7 @@ function Result({ result }) {
   const last = history[history.length - 1]
 
   const chartData = history.map((h) => ({ year: h.year, Historical: h.infl }))
-  chartData[chartData.length - 1].Forecast = last.infl // join the two lines
+  chartData[chartData.length - 1].Forecast = last.infl
   for (let y = forecast_start; y <= forecast_end; y += 1) chartData.push({ year: y, Forecast: prediction })
 
   const bars = Object.entries(all_predictions).map(([key, value]) => ({
@@ -208,7 +216,7 @@ function Result({ result }) {
         <div className="big">
           <span className="tl">Average inflation {forecast_start}–{forecast_end}</span>
           <strong>{fmt(prediction)}%</strong>
-          <span className="badge" style={{ background: MODEL_COLORS[model] }}>{model_label}</span>
+          <span className="badge" style={{ background: MODEL_COLORS[model] || '#718096' }}>{model_label}</span>
           <span className="tn">from {filename}</span>
         </div>
         <div>
@@ -225,7 +233,7 @@ function Result({ result }) {
                 label={{ position: 'right', formatter: (v) => `${fmt(v)}%`, fill: 'currentColor' }}
               >
                 {bars.map((b) => (
-                  <Cell key={b.key} fill={MODEL_COLORS[b.key]} opacity={b.key === model ? 1 : 0.55} />
+                  <Cell key={b.key} fill={MODEL_COLORS[b.key] || '#718096'} opacity={b.key === model ? 1 : 0.55} />
                 ))}
               </Bar>
             </BarChart>
@@ -242,7 +250,7 @@ function Result({ result }) {
           <Tooltip formatter={(v) => `${fmt(v)}%`} />
           <Legend />
           <Line type="linear" dataKey="Historical" name="Historical inflation" stroke="#718096" strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={false} />
-          <Line type="linear" dataKey="Forecast" name="5-year average forecast" stroke={MODEL_COLORS[model]} strokeWidth={2.5} strokeDasharray="6 4" dot={false} connectNulls isAnimationActive={false} />
+          <Line type="linear" dataKey="Forecast" name="5-year average forecast" stroke={MODEL_COLORS[model] || '#718096'} strokeWidth={2.5} strokeDasharray="6 4" dot={false} connectNulls isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
       <p className="hint">
@@ -266,7 +274,7 @@ function Benchmark({ info }) {
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={rows} layout="vertical" margin={{ left: 20, right: 30 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} horizontal={false} />
-            <XAxis type="number" domain={[-0.3, 0.8]} />
+            <XAxis type="number" domain={[-0.3, 1.0]} />
             <YAxis type="category" dataKey="Model" width={120} tickLine={false} />
             <Tooltip formatter={(v) => fmt(v, 3)} cursor={{ fill: 'rgba(128,128,128,.12)' }} />
             <Bar dataKey="Mean R²" radius={4} isAnimationActive={false}>
