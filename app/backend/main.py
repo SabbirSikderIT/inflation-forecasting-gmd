@@ -64,7 +64,7 @@ def _record_to_dict(r: PredictionRecord) -> dict:
     }
 
 
-# 🚨 UPDATED: GET এবং HEAD দুটো মেথডই সাপোর্ট করবে UptimeRobot-এর জন্য
+
 @app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"status": "ok", "message": "Inflation Forecast API is running"}
@@ -84,18 +84,25 @@ def list_models():
     """Model metadata plus the cross-validated R2 scores from the study."""
     bench = json.loads((BASE / "artifacts" / "benchmark.json").read_text(encoding="utf-8"))
     r2 = {row["Model"]: row for row in bench["results"]}
-    key_to_study = {"RandomForest": "Random Forest", "XGBoost": "XGBoost", "Persistence": "Persistence"}
+    
+    key_to_study = {
+        "RandomForest": "Random Forest", 
+        "XGBoost": "XGBoost", 
+        "Persistence": "Persistence",
+        "CNN-LSTM": "CNN-LSTM"
+    }
+    
     available = predictor.available_models()
     models = []
     for key, label in predictor.MODEL_LABELS.items():
-        row = r2.get(key_to_study[key], {})
+        row = r2.get(key_to_study.get(key, ""), {}) # get() ব্যবহার করা হয়েছে সেফটির জন্য
         models.append({
             "key": key,
             "label": label,
             "available": key in available,
-            "fold1_r2": row.get("Fold 1 R²"),
-            "fold2_r2": row.get("Fold 2 R²"),
-            "mean_r2": row.get("Mean R²"),
+            "fold1_r2": row.get("Fold 1 R²", 0.0),
+            "fold2_r2": row.get("Fold 2 R²", 0.0),
+            "mean_r2": row.get("Mean R²", 0.0),
         })
     return {
         "models": models,
