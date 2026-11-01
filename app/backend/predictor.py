@@ -2,7 +2,7 @@
 
 Mirrors the training pipeline (notebooks/Untitled0.ipynb):
   1. forward/backward fill gaps of up to 2 years
-  2. RobustScaler on the 8 features (parameters stored in artifacts/preprocessing.json)
+  2. RobustScaler on the 8 features 
   3. flatten the 10-year x 8-feature window (time-major) into 80 inputs
   4. model output is a standardised log target:
         real = exp(y * y_scale + y_mean) - shift
@@ -16,10 +16,21 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
+import torch
+import torch.nn as nn
 
 BASE = Path(__file__).resolve().parent
 MODELS_DIR = BASE / "models"
+
+# --- Load preprocessing parameters from json and pkl ---
 ART = json.loads((BASE / "artifacts" / "preprocessing.json").read_text(encoding="utf-8"))
+
+try:
+    with open(MODELS_DIR / "preprocessors.pkl", "rb") as f:
+        PREPROCESSORS_PKL = pickle.load(f)
+except Exception as e:
+    print(f"Warning: Could not load preprocessors.pkl: {e}")
+    PREPROCESSORS_PKL = {}
 
 FEATURES: List[str] = ART["features"]
 WINDOW: int = ART["window"]
@@ -32,11 +43,30 @@ CLIP_LOWER, CLIP_UPPER = ART["clip_lower"], ART["clip_upper"]
 MODEL_LABELS = {
     "RandomForest": "Random Forest",
     "XGBoost": "XGBoost",
+    "CNN-LSTM": "CNN-LSTM (Ensemble)",
     "Persistence": "Persistence Baseline",
 }
 
 models: Dict[str, object] = {}
 load_errors: Dict[str, str] = {}
+
+# --- PyTorch Model Architecture ---
+class Small_CNN_LSTM(nn.Module):
+    def __init__(self, n_features, seq_len):
+        super().__init__()
+        self.conv1 = nn.Conv1d(n_features, 16, kernel_size=3, padding=1)
+        self.dropout = nn.Dropout(0.4) 
+        self.lstm = nn.LSTM(16, 16, num_layers=1, batch_first=True)
+        self.fc = nn.Linear(16, 1)
+
+    def forward(self, x):
+        x = x.transpose(1, 2)
+        x = torch.relu(self.conv1(x))
+        x = self.dropout(x)
+        x = x.transpose(1, 2)
+        _, (h_n, _) = self.lstm(x)
+        out = self.fc(h_n[-1])
+        return out.squeeze(-1)
 
 
 class InputError(ValueError):
@@ -45,6 +75,7 @@ class InputError(ValueError):
 
 def load_models() -> None:
     """Load the trained models once at start-up."""
+    # 1. Load Tree-based models
     sources = {
         "RandomForest": "random_forest_fold1.pkl",
         "XGBoost": "xgboost_fold1.json",
@@ -54,16 +85,31 @@ def load_models() -> None:
         try:
             if path.suffix == ".json":
                 import xgboost as xgb
-
                 m = xgb.XGBRegressor()
                 m.load_model(str(path))
                 models[name] = m
             else:
                 with open(path, "rb") as fh:
-                    models[name] = pickle.load(fh)  # trusted, repo-owned files only
-        except Exception as exc:  # keep the API up; report the model as unavailable
+                    models[name] = pickle.load(fh)
+        except Exception as exc:
             load_errors[name] = f"{type(exc).__name__}: {exc}"
             print(f"[models] {name} failed to load: {load_errors[name]}")
+
+    # 2. Load PyTorch Ensemble LSTM Models
+    try:
+        device = torch.device('cpu')
+        model_states = torch.load(MODELS_DIR / 'ensemble_lstm_models.pth', map_location=device)
+        lstm_models = []
+        for state in model_states:
+            m = Small_CNN_LSTM(len(FEATURES), WINDOW).to(device)
+            m.load_state_dict(state)
+            m.eval()
+            lstm_models.append(m)
+        models["CNN-LSTM"] = lstm_models
+        print("✅ LSTM Ensemble loaded successfully")
+    except Exception as exc:
+        load_errors["CNN-LSTM"] = f"{type(exc).__name__}: {exc}"
+        print(f"[models] CNN-LSTM failed to load: {load_errors['CNN-LSTM']}")
 
 
 def available_models() -> List[str]:
@@ -95,7 +141,6 @@ def prepare(df: pd.DataFrame) -> pd.DataFrame:
     if len(df) < WINDOW:
         raise InputError(f"At least {WINDOW} years of data are required; the file has {len(df)}.")
 
-    # Same small-gap filling as training (limit = 2 years)
     for f in FEATURES:
         df[f] = df[f].ffill(limit=2).bfill(limit=2)
 
@@ -118,13 +163,42 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
     """Return the 5-year-ahead average inflation (%) for every available model."""
     out: Dict[str, float] = {}
 
+    # Persistence Model
     persistence = float(window["infl"].tail(5).mean())
     out["Persistence"] = float(np.clip(persistence, CLIP_LOWER, CLIP_UPPER))
 
-    if models:
+    # Tree Models (RandomForest, XGBoost)
+    if "RandomForest" in models or "XGBoost" in models:
         scaled = (window[FEATURES].to_numpy(dtype=np.float64) - X_CENTER) / X_SCALE
         flat = scaled.astype(np.float32).reshape(1, -1)  # time-major, like training
-        for name, model in models.items():
-            y_scaled = float(np.asarray(model.predict(flat)).ravel()[0])
-            out[name] = float(np.exp(y_scaled * Y_SCALE + Y_MEAN) - SHIFT)
+        for name in ["RandomForest", "XGBoost"]:
+            if name in models:
+                y_scaled = float(np.asarray(models[name].predict(flat)).ravel()[0])
+                out[name] = float(np.exp(y_scaled * Y_SCALE + Y_MEAN) - SHIFT)
+
+    # Ensemble CNN-LSTM Model
+    if "CNN-LSTM" in models and PREPROCESSORS_PKL:
+        
+        scaler_X_new = PREPROCESSORS_PKL['scaler_X']
+        scaler_y_new = PREPROCESSORS_PKL['scaler_y']
+        shift_new = PREPROCESSORS_PKL['shift']
+        
+       
+        X_raw = window[FEATURES].to_numpy(dtype=np.float64)
+        X_scaled_new = scaler_X_new.transform(X_raw)
+        X_tensor = torch.tensor(X_scaled_new, dtype=torch.float32).unsqueeze(0)
+        
+        
+        preds = []
+        with torch.no_grad():
+            for m in models["CNN-LSTM"]:
+                preds.append(m(X_tensor).item())
+        
+        avg_pred_scaled = np.mean(preds)
+        
+       
+        log_pred = scaler_y_new.inverse_transform([[avg_pred_scaled]])[0][0]
+        real_pred = np.exp(log_pred) - shift_new
+        out["CNN-LSTM"] = float(real_pred)
+
     return out
