@@ -73,9 +73,33 @@ class InputError(ValueError):
     """The uploaded data cannot be used; message is safe to show to the user."""
 
 
+def _lazy_load_lstm():
+    """Lazily load the LSTM models only when needed to save RAM."""
+    if "CNN-LSTM" in models:
+        return True
+    if "CNN-LSTM" in load_errors:
+        return False
+        
+    try:
+        device = torch.device('cpu')
+        model_states = torch.load(MODELS_DIR / 'ensemble_lstm_models.pth', map_location=device)
+        lstm_models = []
+        for state in model_states:
+            m = Small_CNN_LSTM(len(FEATURES), WINDOW).to(device)
+            m.load_state_dict(state)
+            m.eval()
+            lstm_models.append(m)
+        models["CNN-LSTM"] = lstm_models
+        print("✅ LSTM Ensemble loaded successfully (Lazy Loading)")
+        return True
+    except Exception as exc:
+        load_errors["CNN-LSTM"] = f"{type(exc).__name__}: {exc}"
+        print(f"[models] CNN-LSTM failed to load: {load_errors['CNN-LSTM']}")
+        return False
+
+
 def load_models() -> None:
-    """Load the trained models once at start-up."""
-    # 1. Load Tree-based models
+    """Load the trained tree-based models once at start-up. LSTM will be lazy-loaded."""
     sources = {
         "RandomForest": "random_forest_fold1.pkl",
         "XGBoost": "xgboost_fold1.json",
@@ -95,25 +119,13 @@ def load_models() -> None:
             load_errors[name] = f"{type(exc).__name__}: {exc}"
             print(f"[models] {name} failed to load: {load_errors[name]}")
 
-    # 2. Load PyTorch Ensemble LSTM Models
-    try:
-        device = torch.device('cpu')
-        model_states = torch.load(MODELS_DIR / 'ensemble_lstm_models.pth', map_location=device)
-        lstm_models = []
-        for state in model_states:
-            m = Small_CNN_LSTM(len(FEATURES), WINDOW).to(device)
-            m.load_state_dict(state)
-            m.eval()
-            lstm_models.append(m)
-        models["CNN-LSTM"] = lstm_models
-        print("✅ LSTM Ensemble loaded successfully")
-    except Exception as exc:
-        load_errors["CNN-LSTM"] = f"{type(exc).__name__}: {exc}"
-        print(f"[models] CNN-LSTM failed to load: {load_errors['CNN-LSTM']}")
-
 
 def available_models() -> List[str]:
-    return [*models.keys(), "Persistence"]
+    # Even if not loaded yet, list it as available (it will lazy load on predict)
+    available = [*models.keys(), "Persistence"]
+    if "CNN-LSTM" not in available and "CNN-LSTM" not in load_errors:
+        available.append("CNN-LSTM")
+    return available
 
 
 def prepare(df: pd.DataFrame) -> pd.DataFrame:
@@ -176,18 +188,15 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
                 y_scaled = float(np.asarray(models[name].predict(flat)).ravel()[0])
                 out[name] = float(np.exp(y_scaled * Y_SCALE + Y_MEAN) - SHIFT)
 
-    # Ensemble CNN-LSTM Model
-    if "CNN-LSTM" in models and PREPROCESSORS_PKL:
-        
+    # Ensemble CNN-LSTM Model (Lazy loaded)
+    if PREPROCESSORS_PKL and _lazy_load_lstm():
         scaler_X_new = PREPROCESSORS_PKL['scaler_X']
         scaler_y_new = PREPROCESSORS_PKL['scaler_y']
         shift_new = PREPROCESSORS_PKL['shift']
         
-       
         X_raw = window[FEATURES].to_numpy(dtype=np.float64)
         X_scaled_new = scaler_X_new.transform(X_raw)
         X_tensor = torch.tensor(X_scaled_new, dtype=torch.float32).unsqueeze(0)
-        
         
         preds = []
         with torch.no_grad():
@@ -196,7 +205,6 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
         
         avg_pred_scaled = np.mean(preds)
         
-       
         log_pred = scaler_y_new.inverse_transform([[avg_pred_scaled]])[0][0]
         real_pred = np.exp(log_pred) - shift_new
         out["CNN-LSTM"] = float(real_pred)
