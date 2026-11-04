@@ -12,14 +12,18 @@ const MODEL_COLORS = {
   RandomForest: '#2f855a', 
   XGBoost: '#c05621', 
   Persistence: '#3182ce',
-  'CNN-LSTM': '#805ad5' 
+  'CNN-LSTM': '#805ad5',
+  'GRNN': '#dd6b20', 
+  'SVM': '#319795'   
 }
 
 const STUDY_COLORS = { 
   'Random Forest': MODEL_COLORS.RandomForest, 
   XGBoost: MODEL_COLORS.XGBoost, 
   Persistence: MODEL_COLORS.Persistence,
-  'CNN-LSTM': MODEL_COLORS['CNN-LSTM']
+  'CNN-LSTM': MODEL_COLORS['CNN-LSTM'],
+  'GRNN': MODEL_COLORS['GRNN'],
+  'SVM': MODEL_COLORS['SVM']
 }
 
 const COUNTRY = { USA: 'United States', GBR: 'United Kingdom', IND: 'India' }
@@ -226,7 +230,7 @@ function Result({ result }) {
           <ResponsiveContainer width="100%" height={150}>
             <BarChart data={bars} layout="vertical" margin={{ left: 10, right: 40 }}>
               <XAxis type="number" hide domain={[0, 'dataMax + 1']} />
-              <YAxis type="category" dataKey="name" width={110} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} />
               <Tooltip formatter={(v) => `${fmt(v)}%`} cursor={{ fill: 'rgba(128,128,128,.12)' }} />
               <Bar
                 dataKey="value"
