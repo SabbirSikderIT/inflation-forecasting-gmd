@@ -1,13 +1,4 @@
-"""Input validation, preprocessing and prediction.
-
-Mirrors the training pipeline (notebooks/Untitled0.ipynb):
-  1. forward/backward fill gaps of up to 2 years
-  2. RobustScaler on the 8 features 
-  3. flatten the 10-year x 8-feature window (time-major) into 80 inputs
-  4. model output is a standardised log target:
-        real = exp(y * y_scale + y_mean) - shift
-  5. Persistence = mean inflation of the last 5 years, clipped to the training range
-"""
+"""Input validation, preprocessing and prediction."""
 
 import json
 import pickle
@@ -22,15 +13,8 @@ import torch.nn as nn
 BASE = Path(__file__).resolve().parent
 MODELS_DIR = BASE / "models"
 
-# --- Load preprocessing parameters from json and pkl ---
+# --- Load preprocessing parameters from JSON ---
 ART = json.loads((BASE / "artifacts" / "preprocessing.json").read_text(encoding="utf-8"))
-
-try:
-    with open(MODELS_DIR / "preprocessors.pkl", "rb") as f:
-        PREPROCESSORS_PKL = pickle.load(f)
-except Exception as e:
-    print(f"Warning: Could not load preprocessors.pkl: {e}")
-    PREPROCESSORS_PKL = {}
 
 FEATURES: List[str] = ART["features"]
 WINDOW: int = ART["window"]
@@ -44,7 +28,7 @@ MODEL_LABELS = {
     "RandomForest": "Random Forest",
     "GradientBoosting": "Gradient Boosting",
     "XGBoost": "XGBoost",
-    "CNN-LSTM": "CNN-LSTM (Ensemble)",
+    "CNN-LSTM": "CNN-LSTM (Aug)",
     "Persistence": "Persistence Baseline",
 }
 
@@ -83,15 +67,14 @@ def _lazy_load_lstm():
         
     try:
         device = torch.device('cpu')
-        model_states = torch.load(MODELS_DIR / 'ensemble_lstm_models.pth', map_location=device)
-        lstm_models = []
-        for state in model_states:
-            m = Small_CNN_LSTM(len(FEATURES), WINDOW).to(device)
-            m.load_state_dict(state)
-            m.eval()
-            lstm_models.append(m)
-        models["CNN-LSTM"] = lstm_models
-        print("✅ LSTM Ensemble loaded successfully (Lazy Loading)")
+        model_state = torch.load(MODELS_DIR / 'temporal_lstm_model.pth', map_location=device)
+        
+        m = Small_CNN_LSTM(len(FEATURES), WINDOW).to(device)
+        m.load_state_dict(model_state)
+        m.eval()
+        
+        models["CNN-LSTM"] = [m] 
+        print("✅ CNN-LSTM loaded successfully (Lazy Loading)")
         return True
     except Exception as exc:
         load_errors["CNN-LSTM"] = f"{type(exc).__name__}: {exc}"
@@ -103,7 +86,7 @@ def load_models() -> None:
     """Load the trained tree-based models once at start-up. LSTM will be lazy-loaded."""
     sources = {
         "RandomForest": "random_forest_fold1.pkl",
-        "GradientBoosting": "gradient_boosting_fold1.pkl"
+        "GradientBoosting": "gradient_boosting_fold1.pkl",
         "XGBoost": "xgboost_fold1.json",
     }
     for name, fname in sources.items():
@@ -123,7 +106,6 @@ def load_models() -> None:
 
 
 def available_models() -> List[str]:
-    # Even if not loaded yet, list it as available (it will lazy load on predict)
     available = [*models.keys(), "Persistence"]
     if "CNN-LSTM" not in available and "CNN-LSTM" not in load_errors:
         available.append("CNN-LSTM")
@@ -181,23 +163,19 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
     persistence = float(window["infl"].tail(5).mean())
     out["Persistence"] = float(np.clip(persistence, CLIP_LOWER, CLIP_UPPER))
 
-    # Tree Models (RandomForest, XGBoost,GradientBoosting)
+    # Tree Models (RandomForest, XGBoost, GradientBoosting)
     if "RandomForest" in models or "XGBoost" in models or "GradientBoosting" in models:
         scaled = (window[FEATURES].to_numpy(dtype=np.float64) - X_CENTER) / X_SCALE
-        flat = scaled.astype(np.float32).reshape(1, -1)  # time-major, like training
-        for name in ["RandomForest", "XGBoost","GradientBoosting"]:
+        flat = scaled.astype(np.float32).reshape(1, -1)
+        for name in ["RandomForest", "XGBoost", "GradientBoosting"]:
             if name in models:
                 y_scaled = float(np.asarray(models[name].predict(flat)).ravel()[0])
                 out[name] = float(np.exp(y_scaled * Y_SCALE + Y_MEAN) - SHIFT)
 
-    # Ensemble CNN-LSTM Model (Lazy loaded)
-    if PREPROCESSORS_PKL and _lazy_load_lstm():
-        scaler_X_new = PREPROCESSORS_PKL['scaler_X']
-        scaler_y_new = PREPROCESSORS_PKL['scaler_y']
-        shift_new = PREPROCESSORS_PKL['shift']
-        
+    # CNN-LSTM Model (Lazy loaded)
+    if "CNN-LSTM" in available_models() and _lazy_load_lstm():
         X_raw = window[FEATURES].to_numpy(dtype=np.float64)
-        X_scaled_new = scaler_X_new.transform(X_raw)
+        X_scaled_new = (X_raw - X_CENTER) / X_SCALE
         X_tensor = torch.tensor(X_scaled_new, dtype=torch.float32).unsqueeze(0)
         
         preds = []
@@ -207,8 +185,8 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
         
         avg_pred_scaled = np.mean(preds)
         
-        log_pred = scaler_y_new.inverse_transform([[avg_pred_scaled]])[0][0]
-        real_pred = np.exp(log_pred) - shift_new
+        log_pred = avg_pred_scaled * Y_SCALE + Y_MEAN
+        real_pred = np.exp(log_pred) - SHIFT
         out["CNN-LSTM"] = float(real_pred)
 
     return out
