@@ -15,6 +15,7 @@ const MODEL_COLORS = {
   'CNN-LSTM': '#805ad5',
   'GRNN': '#dd6b20', 
   'SVM': '#319795'   
+  GradientBoosting: '#4a5568'
 }
 
 const STUDY_COLORS = { 
@@ -24,6 +25,7 @@ const STUDY_COLORS = {
   'CNN-LSTM': MODEL_COLORS['CNN-LSTM'],
   'GRNN': MODEL_COLORS['GRNN'],
   'SVM': MODEL_COLORS['SVM']
+   'Gradient Boosting': MODEL_COLORS.GradientBoosting
 }
 
 const COUNTRY = { USA: 'United States', GBR: 'United Kingdom', IND: 'India' }
