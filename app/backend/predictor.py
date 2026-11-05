@@ -13,7 +13,7 @@ import torch.nn as nn
 BASE = Path(__file__).resolve().parent
 MODELS_DIR = BASE / "models"
 
-# --- Load preprocessing parameters from JSON ---
+# --- Load preprocessing parameters from JSON (for Tree Models) ---
 ART = json.loads((BASE / "artifacts" / "preprocessing.json").read_text(encoding="utf-8"))
 
 FEATURES: List[str] = ART["features"]
@@ -34,6 +34,7 @@ MODEL_LABELS = {
 
 models: Dict[str, object] = {}
 load_errors: Dict[str, str] = {}
+TEMPORAL_PREPROCESSORS = None
 
 # --- PyTorch Model Architecture ---
 class Small_CNN_LSTM(nn.Module):
@@ -59,8 +60,10 @@ class InputError(ValueError):
 
 
 def _lazy_load_lstm():
-    """Lazily load the LSTM models only when needed to save RAM."""
-    if "CNN-LSTM" in models:
+    """Lazily load the LSTM models and preprocessors only when needed."""
+    global TEMPORAL_PREPROCESSORS
+    
+    if "CNN-LSTM" in models and TEMPORAL_PREPROCESSORS is not None:
         return True
     if "CNN-LSTM" in load_errors:
         return False
@@ -68,13 +71,15 @@ def _lazy_load_lstm():
     try:
         device = torch.device('cpu')
         model_state = torch.load(MODELS_DIR / 'temporal_lstm_model.pth', map_location=device)
-        
         m = Small_CNN_LSTM(len(FEATURES), WINDOW).to(device)
         m.load_state_dict(model_state)
         m.eval()
-        
         models["CNN-LSTM"] = [m] 
-        print("✅ CNN-LSTM loaded successfully (Lazy Loading)")
+        
+        with open(MODELS_DIR / "temporal_preprocessors.pkl", "rb") as f:
+            TEMPORAL_PREPROCESSORS = pickle.load(f)
+            
+        print("✅ CNN-LSTM (Temporal) loaded successfully")
         return True
     except Exception as exc:
         load_errors["CNN-LSTM"] = f"{type(exc).__name__}: {exc}"
@@ -83,7 +88,7 @@ def _lazy_load_lstm():
 
 
 def load_models() -> None:
-    """Load the trained tree-based models once at start-up. LSTM will be lazy-loaded."""
+    """Load the trained tree-based models once at start-up."""
     sources = {
         "RandomForest": "random_forest_fold1.pkl",
         "GradientBoosting": "gradient_boosting_fold1.pkl",
@@ -159,11 +164,9 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
     """Return the 5-year-ahead average inflation (%) for every available model."""
     out: Dict[str, float] = {}
 
-    # Persistence Model
     persistence = float(window["infl"].tail(5).mean())
     out["Persistence"] = float(np.clip(persistence, CLIP_LOWER, CLIP_UPPER))
 
-    # Tree Models (RandomForest, XGBoost, GradientBoosting)
     if "RandomForest" in models or "XGBoost" in models or "GradientBoosting" in models:
         scaled = (window[FEATURES].to_numpy(dtype=np.float64) - X_CENTER) / X_SCALE
         flat = scaled.astype(np.float32).reshape(1, -1)
@@ -172,11 +175,16 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
                 y_scaled = float(np.asarray(models[name].predict(flat)).ravel()[0])
                 out[name] = float(np.exp(y_scaled * Y_SCALE + Y_MEAN) - SHIFT)
 
-    # CNN-LSTM Model (Lazy loaded)
     if "CNN-LSTM" in available_models() and _lazy_load_lstm():
+        scaler_X_new = TEMPORAL_PREPROCESSORS['scaler_X']
+        scaler_y_new = TEMPORAL_PREPROCESSORS['scaler_y']
+        shift_new = TEMPORAL_PREPROCESSORS['shift']
+        
         X_raw = window[FEATURES].to_numpy(dtype=np.float64)
-        X_scaled_new = (X_raw - X_CENTER) / X_SCALE
-        X_tensor = torch.tensor(X_scaled_new, dtype=torch.float32).unsqueeze(0)
+        X_scaled_new = scaler_X_new.transform(X_raw)
+        
+        X_scaled_new = X_scaled_new.reshape(1, WINDOW, len(FEATURES))
+        X_tensor = torch.tensor(X_scaled_new, dtype=torch.float32)
         
         preds = []
         with torch.no_grad():
@@ -185,8 +193,10 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
         
         avg_pred_scaled = np.mean(preds)
         
-        log_pred = avg_pred_scaled * Y_SCALE + Y_MEAN
-        real_pred = np.exp(log_pred) - SHIFT
+        log_pred = scaler_y_new.inverse_transform([[avg_pred_scaled]])[0][0]
+        real_pred = np.exp(log_pred) - shift_new
+        
+        real_pred = np.clip(real_pred, 0, 100)
         out["CNN-LSTM"] = float(real_pred)
 
     return out
