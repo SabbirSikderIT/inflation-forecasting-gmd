@@ -26,7 +26,7 @@
       "Std R²": 0.100
     },
     {
-      "Model": "CNN-LSTM (Aug)",
+      "Model": "CNN-LSTM",
       "Fold 1 R²": -0.164,
       "Fold 2 R²": -0.061,
       "Mean R²": 0.0687,
