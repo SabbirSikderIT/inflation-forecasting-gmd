@@ -8,24 +8,26 @@ import {
   getModels, getSampleFile, getSamples, predict,
 } from './api'
 
+// 🚨 FIX: Missing comma added after SVM
 const MODEL_COLORS = { 
   RandomForest: '#2f855a', 
   XGBoost: '#c05621', 
   Persistence: '#3182ce',
   'CNN-LSTM': '#805ad5',
   'GRNN': '#dd6b20', 
-  'SVM': '#319795'   
+  'SVM': '#319795',
   GradientBoosting: '#4a5568'
 }
 
+// 🚨 FIX: Missing comma added after SVM mapping
 const STUDY_COLORS = { 
   'Random Forest': MODEL_COLORS.RandomForest, 
   XGBoost: MODEL_COLORS.XGBoost, 
   Persistence: MODEL_COLORS.Persistence,
   'CNN-LSTM': MODEL_COLORS['CNN-LSTM'],
   'GRNN': MODEL_COLORS['GRNN'],
-  'SVM': MODEL_COLORS['SVM']
-   'Gradient Boosting': MODEL_COLORS.GradientBoosting
+  'SVM': MODEL_COLORS['SVM'],
+  'Gradient Boosting': MODEL_COLORS.GradientBoosting
 }
 
 const COUNTRY = { USA: 'United States', GBR: 'United Kingdom', IND: 'India' }
@@ -188,7 +190,7 @@ export default function App() {
       />
 
       <footer>
-        Built on the leakage-free GMD inflation-forecasting benchmark (2-fold temporal cross-validation, seed 42).
+        Built on the leakage-free GMD inflation-forecasting benchmark (Strict Temporal Evaluation).
         Forecasts are research output, not financial advice.
       </footer>
     </div>
@@ -213,9 +215,12 @@ function Result({ result }) {
   chartData[chartData.length - 1].Forecast = last.infl 
   for (let y = forecast_start; y <= forecast_end; y += 1) chartData.push({ year: y, Forecast: prediction })
 
-  const bars = Object.entries(all_predictions).map(([key, value]) => ({
-    key, value, name: key === 'RandomForest' ? 'Random Forest' : key,
-  }))
+  const bars = Object.entries(all_predictions).map(([key, value]) => {
+    let name = key;
+    if (key === 'RandomForest') name = 'Random Forest';
+    else if (key === 'GradientBoosting') name = 'Gradient Boosting';
+    return { key, value, name };
+  })
 
   return (
     <section className="card">
@@ -276,15 +281,16 @@ function Benchmark({ info }) {
       <h2>Study results · model comparison</h2>
       
       <p className="hint">
-        Out-of-sample R² from cross-validation. The CNN-LSTM model, enhanced with ensemble imputation and data augmentation, 
-        demonstrates the highest predictive accuracy.
+        Out-of-sample R² from strict temporal cross-validation (no data leakage). 
+        Tree-based ensemble models like Random Forest demonstrate the highest predictive accuracy based on real data, 
+        while deep learning models struggle even with augmented data.
       </p>
       
       <div className="grid2">
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={rows} layout="vertical" margin={{ left: 20, right: 30 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} horizontal={false} />
-            <XAxis type="number" domain={[-0.3, 1.0]} />
+            <XAxis type="number" domain={[-0.8, 0.6]} />
             <YAxis type="category" dataKey="Model" width={120} tickLine={false} />
             <Tooltip formatter={(v) => fmt(v, 3)} cursor={{ fill: 'rgba(128,128,128,.12)' }} />
             <Bar dataKey="Mean R²" radius={4} isAnimationActive={false}>
