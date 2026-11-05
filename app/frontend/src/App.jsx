@@ -8,7 +8,6 @@ import {
   getModels, getSampleFile, getSamples, predict,
 } from './api'
 
-// 🚨 FIX: Missing comma added after SVM
 const MODEL_COLORS = { 
   RandomForest: '#2f855a', 
   XGBoost: '#c05621', 
@@ -19,7 +18,6 @@ const MODEL_COLORS = {
   GradientBoosting: '#4a5568'
 }
 
-// 🚨 FIX: Missing comma added after SVM mapping
 const STUDY_COLORS = { 
   'Random Forest': MODEL_COLORS.RandomForest, 
   XGBoost: MODEL_COLORS.XGBoost, 
