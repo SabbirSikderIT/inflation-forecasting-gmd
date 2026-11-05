@@ -42,6 +42,7 @@ CLIP_LOWER, CLIP_UPPER = ART["clip_lower"], ART["clip_upper"]
 
 MODEL_LABELS = {
     "RandomForest": "Random Forest",
+    "GradientBoosting": "Gradient Boosting",
     "XGBoost": "XGBoost",
     "CNN-LSTM": "CNN-LSTM (Ensemble)",
     "Persistence": "Persistence Baseline",
@@ -102,6 +103,7 @@ def load_models() -> None:
     """Load the trained tree-based models once at start-up. LSTM will be lazy-loaded."""
     sources = {
         "RandomForest": "random_forest_fold1.pkl",
+        "GradientBoosting": "gradient_boosting_fold1.pkl"
         "XGBoost": "xgboost_fold1.json",
     }
     for name, fname in sources.items():
@@ -179,11 +181,11 @@ def predict_all(window: pd.DataFrame) -> Dict[str, float]:
     persistence = float(window["infl"].tail(5).mean())
     out["Persistence"] = float(np.clip(persistence, CLIP_LOWER, CLIP_UPPER))
 
-    # Tree Models (RandomForest, XGBoost)
-    if "RandomForest" in models or "XGBoost" in models:
+    # Tree Models (RandomForest, XGBoost,GradientBoosting)
+    if "RandomForest" in models or "XGBoost" in models or "GradientBoosting" in models:
         scaled = (window[FEATURES].to_numpy(dtype=np.float64) - X_CENTER) / X_SCALE
         flat = scaled.astype(np.float32).reshape(1, -1)  # time-major, like training
-        for name in ["RandomForest", "XGBoost"]:
+        for name in ["RandomForest", "XGBoost","GradientBoosting"]:
             if name in models:
                 y_scaled = float(np.asarray(models[name].predict(flat)).ravel()[0])
                 out[name] = float(np.exp(y_scaled * Y_SCALE + Y_MEAN) - SHIFT)
