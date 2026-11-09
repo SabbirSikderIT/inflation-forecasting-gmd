@@ -90,7 +90,6 @@ def prepare(df):
     X_raw = preprocessors['imputer'].transform(df_window.values)
     X_scaled = preprocessors['scaler_X'].transform(X_raw)
     
-    # Force-clean NaNs just in case
     X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
         
     return {'df': df_window, 'X_scaled': X_scaled}
