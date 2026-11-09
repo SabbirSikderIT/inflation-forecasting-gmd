@@ -38,27 +38,6 @@
       "Fold 2 R²": 0.415,
       "Mean R²": 0.4149,
       "Std R²": 0.000
-    },
-    {
-      "Model": "Gradient Boosting",
-      "Fold 1 R²": 0.411,
-      "Fold 2 R²": 0.411,
-      "Mean R²": 0.4110,
-      "Std R²": 0.000
-    },
-    {
-      "Model": "XGBoost",
-      "Fold 1 R²": 0.392,
-      "Fold 2 R²": 0.392,
-      "Mean R²": 0.3917,
-      "Std R²": 0.000
-    },
-    {
-      "Model": "Random Forest",
-      "Fold 1 R²": 0.339,
-      "Fold 2 R²": 0.339,
-      "Mean R²": 0.3391,
-      "Std R²": 0.000
     }
   ]
 }
