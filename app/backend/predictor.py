@@ -41,6 +41,7 @@ def load_models():
     global available_models_list, load_errors
     
     try:
+        # Load Preprocessors
         preprocessors['imputer'] = joblib.load(MODEL_DIR / "imputer.pkl")
         preprocessors['scaler_X'] = joblib.load(MODEL_DIR / "scaler_X.pkl")
         preprocessors['scaler_y'] = joblib.load(MODEL_DIR / "scaler_y.pkl")
@@ -51,17 +52,19 @@ def load_models():
         with open(MODEL_DIR / "ensemble_weights.json", "r") as f:
             preprocessors['ensemble_weights'] = json.load(f)
 
+        # Load ML Models
         models['AdaBoost'] = joblib.load(MODEL_DIR / "adaboost.pkl")
         models['Custom MLTE'] = joblib.load(MODEL_DIR / "custom_mlte.pkl")
         models['Custom VAE-Boost'] = joblib.load(MODEL_DIR / "custom_vae_boost.pkl")
         
+        # Load PyTorch VAE Encoder
         vae_enc = VAE_Encoder(WINDOW * len(FEATURES))
         vae_enc.load_state_dict(torch.load(MODEL_DIR / "vae_encoder.pth", map_location=torch.device('cpu')))
         vae_enc.eval()
         models['VAE_Encoder'] = vae_enc
         
         available_models_list = ['Ensemble', 'AdaBoost', 'Custom MLTE', 'Custom VAE-Boost']
-        print("✅ Models loaded successfully.")
+        print("✅ All models loaded successfully.")
         
     except Exception as e:
         load_errors['general'] = str(e)
@@ -87,9 +90,14 @@ def prepare(df):
     if len(df_window) < WINDOW:
         raise InputError(f"At least {WINDOW} years of data required.")
         
+    # Impute and Scale
     X_raw = preprocessors['imputer'].transform(df_window.values)
     X_scaled = preprocessors['scaler_X'].transform(X_raw)
     
+    if np.isnan(X_scaled).any():
+        print("⚠️ Warning: NaNs found in input. Filling with 0 (mean).")
+        X_scaled = np.nan_to_num(X_scaled, nan=0.0)
+        
     return {'df': df_window, 'X_scaled': X_scaled}
 
 # --- Predict ---
@@ -103,6 +111,7 @@ def predict_all(window_data):
         preds_scaled['AdaBoost'] = models['AdaBoost'].predict(X_flat)[0]
         preds_scaled['Custom MLTE'] = models['Custom MLTE'].predict(X_flat)[0]
         
+        # VAE Prediction
         with torch.no_grad():
             mu, _ = models['VAE_Encoder'](torch.tensor(X_flat, dtype=torch.float32))
             X_hybrid = np.hstack((X_flat, mu.numpy()))
@@ -114,7 +123,7 @@ def predict_all(window_data):
             if name in preds_scaled:
                 ensemble_pred += weight * preds_scaled[name]
         
-        # Inverse Transform
+        # Inverse Transform to Real Space (%)
         def inverse(pred):
             log_p = preprocessors['scaler_y'].inverse_transform([[pred]])[0][0]
             real_p = np.exp(log_p) - preprocessors['target_params']['shift']
