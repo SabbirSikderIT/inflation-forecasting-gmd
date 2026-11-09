@@ -1,0 +1,66 @@
+{
+  "dataset": "Global Macro Database 2025",
+  "year_range": "1970-2025",
+  "n_countries": 52,
+  "horizon": "5-year forward average inflation",
+  "window": 10,
+  "features": [
+    "infl",
+    "rGDP_pc",
+    "unemp",
+    "govdebt_GDP",
+    "CA_GDP",
+    "USDfx",
+    "REER",
+    "pop"
+  ],
+  "n_samples": 1757,
+  "train_end": 2000,
+  "test_start": 2006,
+  "test_end": 2015,
+  "cv_folds": 2,
+  "results": [
+    {
+      "Model": "Persistence",
+      "Fold 1 R\u00b2": 0.547,
+      "Fold 2 R\u00b2": 0.764,
+      "Mean R\u00b2": 0.6555,
+      "Std R\u00b2": 0.1534421715174808
+    },
+    {
+      "Model": "XGBoost",
+      "Fold 1 R\u00b2": 0.56,
+      "Fold 2 R\u00b2": 0.469,
+      "Mean R\u00b2": 0.5145,
+      "Std R\u00b2": 0.06434671708797587
+    },
+    {
+      "Model": "Random Forest",
+      "Fold 1 R\u00b2": 0.599,
+      "Fold 2 R\u00b2": 0.406,
+      "Mean R\u00b2": 0.5025,
+      "Std R\u00b2": 0.13647160876900363
+    },
+    {
+      "Model": "Gradient Boosting",
+      "Fold 1 R\u00b2": 0.531,
+      "Fold 2 R\u00b2": 0.452,
+      "Mean R\u00b2": 0.49150000000000005,
+      "Std R\u00b2": 0.055861435713737265
+    },
+    {
+      "Model": "CNN-LSTM",
+      "Fold 1 R\u00b2": 0.116,
+      "Fold 2 R\u00b2": 0.4702830910682678,
+      "Mean R\u00b2": 0.2931415455341339,
+      "Std R\u00b2": 0.25051597615410337
+    },
+    {
+      "Model": "Naive",
+      "Fold 1 R\u00b2": -0.32,
+      "Fold 2 R\u00b2": -0.007,
+      "Mean R\u00b2": -0.1635,
+      "Std R\u00b2": 0.22132442251138937
+    }
+  ]
+}
