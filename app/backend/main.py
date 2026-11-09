@@ -22,8 +22,7 @@ from database import PredictionRecord, get_db, init_db
 
 BASE = Path(__file__).resolve().parent
 SAMPLES_DIR = BASE / "samples"
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB is plenty for a 10-year CSV
-
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB limit
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -31,19 +30,17 @@ async def lifespan(_: FastAPI):
     predictor.load_models()
     yield
 
-
 app = FastAPI(title="Inflation Forecast API", version="1.0.0", lifespan=lifespan)
 
-# Extra allowed browser origins for a hosted frontend, comma separated, no trailing slash:
-#   CORS_ORIGINS=https://my-dashboard.vercel.app
+# CORS Setup
 EXTRA_ORIGINS = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",  # Vite dev server
+        "http://localhost:5173", "http://127.0.0.1:5173", 
         "http://localhost:3000", "http://127.0.0.1:3000",
-        "http://localhost:4173", "http://127.0.0.1:4173",  # Vite preview
+        "http://localhost:4173", "http://127.0.0.1:4173",
         *EXTRA_ORIGINS,
     ],
     allow_methods=["*"],
@@ -64,7 +61,6 @@ def _record_to_dict(r: PredictionRecord) -> dict:
     }
 
 
-
 @app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"status": "ok", "message": "Inflation Forecast API is running"}
@@ -82,20 +78,29 @@ def health():
 @app.get("/api/models")
 def list_models():
     """Model metadata plus the cross-validated R2 scores from the study."""
-    bench = json.loads((BASE / "artifacts" / "benchmark.json").read_text(encoding="utf-8"))
+    try:
+        bench = json.loads((BASE / "artifacts" / "benchmark.json").read_text(encoding="utf-8"))
+    except Exception:
+        # Fallback if benchmark.json is missing or corrupted
+        bench = {"results": [], "dataset": "GMD 2025", "n_countries": 52, "year_range": "1970-2025", "n_samples": 0}
+        
     r2 = {row["Model"]: row for row in bench["results"]}
     
+    # Mapped to the new models
     key_to_study = {
-        "RandomForest": "Random Forest", 
-        "XGBoost": "XGBoost", 
         "Persistence": "Persistence",
-        "CNN-LSTM": "CNN-LSTM"
+        "AdaBoost": "AdaBoost",
+        "Custom VAE-Boost": "Custom VAE-Boost",
+        "Ensemble": "Proposed AOWE Ensemble",
+        "Custom MLTE": "Custom MLTE",
+        "RandomForest": "Random Forest", # kept for backward compatibility if needed
+        "XGBoost": "XGBoost"
     }
     
     available = predictor.available_models()
     models = []
     for key, label in predictor.MODEL_LABELS.items():
-        row = r2.get(key_to_study.get(key, ""), {}) # get() ব্যবহার করা হয়েছে সেফটির জন্য
+        row = r2.get(key_to_study.get(key, ""), {})
         models.append({
             "key": key,
             "label": label,
@@ -110,17 +115,17 @@ def list_models():
         "features": predictor.FEATURES,
         "window": predictor.WINDOW,
         "horizon": predictor.HORIZON,
-        "dataset": bench["dataset"],
-        "n_countries": bench["n_countries"],
-        "year_range": bench["year_range"],
-        "n_samples": bench["n_samples"],
+        "dataset": bench.get("dataset", "GMD 2025"),
+        "n_countries": bench.get("n_countries", 52),
+        "year_range": bench.get("year_range", "1970-2025"),
+        "n_samples": bench.get("n_samples", 0),
     }
 
 
 @app.post("/api/predict")
 async def predict(
     file: UploadFile = File(...),
-    model_name: str = Form("RandomForest"),
+    model_name: str = Form("Ensemble"), 
     db: Session = Depends(get_db),
 ):
     if model_name not in predictor.MODEL_LABELS:
@@ -139,14 +144,22 @@ async def predict(
         raise HTTPException(422, f"Could not read the file as a CSV: {exc}")
 
     try:
-        window = predictor.prepare(df)
+        window_dict = predictor.prepare(df)
+        df_processed = window_dict['df'] # Extract the dataframe
     except predictor.InputError as exc:
         raise HTTPException(422, str(exc))
 
-    all_preds = predictor.predict_all(window)
+    all_preds = predictor.predict_all(window_dict)
     value = all_preds[model_name]
-    last_year = int(window["year"].iloc[-1])
-    history = [{"year": int(y), "infl": round(float(v), 2)} for y, v in zip(window["year"], window["infl"])]
+    
+    # Safely extract year and history
+    last_year = 2020 # Default fallback
+    history = []
+    if 'year' in df_processed.columns:
+        last_year = int(df_processed["year"].iloc[-1])
+        
+    if 'year' in df_processed.columns and 'infl' in df_processed.columns:
+        history = [{"year": int(y), "infl": round(float(v), 2)} for y, v in zip(df_processed["year"], df_processed["infl"])]
 
     db.add(PredictionRecord(
         model_used=model_name,
@@ -154,7 +167,7 @@ async def predict(
         all_predictions=all_preds,
         filename=(file.filename or "")[:200],
         last_year=last_year,
-        input_data=window.to_dict(orient="records"),
+        input_data=df_processed.to_dict(orient="records"),
     ))
     db.commit()
 
