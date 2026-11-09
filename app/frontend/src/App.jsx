@@ -120,7 +120,6 @@ export default function App() {
           <Tile label="Dataset" value="GMD 2025" note={`${info.n_countries} countries · ${info.year_range}`} />
           <Tile label="Input window" value={`${info.window} years`} note={`${info.features.length} macro variables`} />
           <Tile label="Forecast horizon" value={`${info.horizon} years`} note="average inflation, %" />
-          {/* update tile */}
           <Tile label="Best Baseline" value={best?.Model || 'Persistence'} note={`mean R² = ${fmt(best?.['Mean R²'], 3)}`} />
         </section>
       )}
@@ -144,7 +143,6 @@ export default function App() {
             <span>{file ? file.name : 'Choose a CSV file…'}</span>
           </label>
           <select value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
-            {/* added fallback option */}
             {(info?.models ?? [{ key: 'Ensemble', label: 'Proposed AOWE Ensemble', available: true }]).map((m) => (
               <option key={m.key} value={m.key} disabled={!m.available}>
                 {m.label}{m.available ? '' : ' (unavailable)'}
@@ -213,12 +211,21 @@ function Result({ result }) {
     for (let y = forecast_start; y <= forecast_end; y += 1) chartData.push({ year: y, Forecast: prediction })
   }
 
-  const bars = Object.entries(all_predictions).map(([key, value]) => {
-    let name = key;
-    if (key === 'Ensemble') name = 'Proposed AOWE';
-    else if (key === 'Custom VAE-Boost') name = 'Custom VAE-Boost';
-    return { key, value, name };
-  })
+  const modelOrder = ['Ensemble', 'Custom VAE-Boost', 'Custom MLTE', 'AdaBoost'];
+  const bars = Object.entries(all_predictions)
+    .map(([key, value]) => {
+      let name = key;
+      if (key === 'Ensemble') name = 'Proposed AOWE';
+      return { key, value, name };
+    })
+    .sort((a, b) => {
+      const indexA = modelOrder.indexOf(a.key);
+      const indexB = modelOrder.indexOf(b.key);
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      return 0;
+    });
 
   return (
     <section className="card">
