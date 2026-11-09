@@ -1,8 +1,4 @@
-"""Inflation Forecast API (FastAPI).
-
-Run:  uvicorn main:app --reload      (http://localhost:8000, docs at /docs)
-"""
-
+"""Inflation Forecast API (FastAPI)."""
 import io
 import json
 import os
@@ -22,7 +18,7 @@ from database import PredictionRecord, get_db, init_db
 
 BASE = Path(__file__).resolve().parent
 SAMPLES_DIR = BASE / "samples"
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB limit
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -32,13 +28,12 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Inflation Forecast API", version="1.0.0", lifespan=lifespan)
 
-# CORS Setup
 EXTRA_ORIGINS = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173", 
+        "http://localhost:5173", "http://127.0.0.1:5173",
         "http://localhost:3000", "http://127.0.0.1:3000",
         "http://localhost:4173", "http://127.0.0.1:4173",
         *EXTRA_ORIGINS,
@@ -46,7 +41,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 def _record_to_dict(r: PredictionRecord) -> dict:
     return {
@@ -60,11 +54,9 @@ def _record_to_dict(r: PredictionRecord) -> dict:
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
-
 @app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"status": "ok", "message": "Inflation Forecast API is running"}
-
 
 @app.get("/api/health")
 def health():
@@ -74,26 +66,22 @@ def health():
         "models_failed": predictor.load_errors,
     }
 
-
 @app.get("/api/models")
 def list_models():
-    """Model metadata plus the cross-validated R2 scores from the study."""
     try:
         bench = json.loads((BASE / "artifacts" / "benchmark.json").read_text(encoding="utf-8"))
     except Exception:
-        # Fallback if benchmark.json is missing or corrupted
         bench = {"results": [], "dataset": "GMD 2025", "n_countries": 52, "year_range": "1970-2025", "n_samples": 0}
         
     r2 = {row["Model"]: row for row in bench["results"]}
     
-    # Mapped to the new models
     key_to_study = {
         "Persistence": "Persistence",
         "AdaBoost": "AdaBoost",
         "Custom VAE-Boost": "Custom VAE-Boost",
         "Ensemble": "Proposed AOWE Ensemble",
         "Custom MLTE": "Custom MLTE",
-        "RandomForest": "Random Forest", # kept for backward compatibility if needed
+        "RandomForest": "Random Forest",
         "XGBoost": "XGBoost"
     }
     
@@ -121,17 +109,16 @@ def list_models():
         "n_samples": bench.get("n_samples", 0),
     }
 
-
 @app.post("/api/predict")
 async def predict(
     file: UploadFile = File(...),
-    model_name: str = Form("Ensemble"), 
+    model_name: str = Form("Ensemble"),
     db: Session = Depends(get_db),
 ):
     if model_name not in predictor.MODEL_LABELS:
-        raise HTTPException(400, f"Invalid model '{model_name}'. Choose one of: {', '.join(predictor.MODEL_LABELS)}.")
+        raise HTTPException(400, f"Invalid model '{model_name}'.")
     if model_name not in predictor.available_models():
-        raise HTTPException(503, f"{predictor.MODEL_LABELS[model_name]} is not loaded on the server.")
+        raise HTTPException(503, f"{predictor.MODEL_LABELS[model_name]} is not loaded.")
 
     raw = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(raw) > MAX_UPLOAD_BYTES:
@@ -140,26 +127,24 @@ async def predict(
         raise HTTPException(422, "The uploaded file is empty.")
     try:
         df = pd.read_csv(io.StringIO(raw.decode("utf-8-sig")))
-    except (UnicodeDecodeError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
-        raise HTTPException(422, f"Could not read the file as a CSV: {exc}")
+    except Exception as exc:
+        raise HTTPException(422, f"Could not read CSV: {exc}")
+
+    history = []
+    last_year = 2020
+    if 'year' in df.columns and 'infl' in df.columns:
+        df_tail = df.tail(predictor.WINDOW)
+        last_year = int(df_tail["year"].iloc[-1])
+        history = [{"year": int(y), "infl": round(float(v), 2)} for y, v in zip(df_tail["year"], df_tail["infl"])]
 
     try:
         window_dict = predictor.prepare(df)
-        df_processed = window_dict['df'] # Extract the dataframe
+        df_processed = window_dict['df']
     except predictor.InputError as exc:
         raise HTTPException(422, str(exc))
 
     all_preds = predictor.predict_all(window_dict)
     value = all_preds[model_name]
-    
-    # Safely extract year and history
-    last_year = 2020 # Default fallback
-    history = []
-    if 'year' in df_processed.columns:
-        last_year = int(df_processed["year"].iloc[-1])
-        
-    if 'year' in df_processed.columns and 'infl' in df_processed.columns:
-        history = [{"year": int(y), "infl": round(float(v), 2)} for y, v in zip(df_processed["year"], df_processed["infl"])]
 
     db.add(PredictionRecord(
         model_used=model_name,
@@ -176,11 +161,10 @@ async def predict(
         "model": model_name,
         "model_label": predictor.MODEL_LABELS[model_name],
         "all_predictions": {k: round(v, 2) for k, v in all_preds.items()},
-        "history": history,
+        "history": history, 
         "forecast_start": last_year + 1,
         "forecast_end": last_year + predictor.HORIZON,
     }
-
 
 @app.get("/api/predictions")
 def predictions(limit: int = 20, db: Session = Depends(get_db)):
@@ -189,7 +173,6 @@ def predictions(limit: int = 20, db: Session = Depends(get_db)):
         select(PredictionRecord).order_by(PredictionRecord.id.desc()).limit(limit)
     ).all()
     return [_record_to_dict(r) for r in rows]
-
 
 @app.delete("/api/predictions/{record_id}")
 def delete_prediction(record_id: int, db: Session = Depends(get_db)):
@@ -200,18 +183,15 @@ def delete_prediction(record_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"deleted": record_id}
 
-
 @app.delete("/api/predictions")
 def clear_predictions(db: Session = Depends(get_db)):
     n = db.query(PredictionRecord).delete()
     db.commit()
     return {"deleted": n}
 
-
 @app.get("/api/samples")
 def samples():
     return sorted(p.name for p in SAMPLES_DIR.glob("sample_*.csv"))
-
 
 @app.get("/api/samples/{name}")
 def sample(name: str):
