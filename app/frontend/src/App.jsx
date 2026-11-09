@@ -9,23 +9,19 @@ import {
 } from './api'
 
 const MODEL_COLORS = { 
-  RandomForest: '#2f855a', 
-  XGBoost: '#c05621', 
-  Persistence: '#3182ce',
-  'CNN-LSTM': '#805ad5',
-  'GRNN': '#dd6b20', 
-  'SVM': '#319795',
-  GradientBoosting: '#4a5568'
+  Ensemble: '#38a169',          // Green
+  AdaBoost: '#3182ce',          // Blue
+  'Custom VAE-Boost': '#dd6b20', // Orange
+  'Custom MLTE': '#805ad5',     // Purple
+  Persistence: '#e53e3e'        // Red (Baseline)
 }
 
 const STUDY_COLORS = { 
-  'Random Forest': MODEL_COLORS.RandomForest, 
-  XGBoost: MODEL_COLORS.XGBoost, 
-  Persistence: MODEL_COLORS.Persistence,
-  'CNN-LSTM': MODEL_COLORS['CNN-LSTM'],
-  'GRNN': MODEL_COLORS['GRNN'],
-  'SVM': MODEL_COLORS['SVM'],
-  'Gradient Boosting': MODEL_COLORS.GradientBoosting
+  'Proposed AOWE Ensemble': MODEL_COLORS.Ensemble,
+  'AdaBoost': MODEL_COLORS.AdaBoost,
+  'Custom VAE-Boost': MODEL_COLORS['Custom VAE-Boost'],
+  'Custom MLTE': MODEL_COLORS['Custom MLTE'],
+  'Persistence': MODEL_COLORS.Persistence
 }
 
 const COUNTRY = { USA: 'United States', GBR: 'United Kingdom', IND: 'India' }
@@ -37,7 +33,8 @@ export default function App() {
   const [samples, setSamples] = useState([])
   const [history, setHistory] = useState([])
   const [file, setFile] = useState(null)
-  const [model, setModel] = useState('RandomForest')
+  
+  const [model, setModel] = useState('Ensemble')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
@@ -114,8 +111,7 @@ export default function App() {
 
       {health === false && (
         <div className="alert">
-          The backend is not reachable. In the <code>backend</code> folder run{' '}
-          <code>uvicorn main:app --reload</code>, then refresh this page.
+          The backend is not reachable. It might be waking up from sleep (takes ~50s). Please refresh after a minute.
         </div>
       )}
 
@@ -124,7 +120,8 @@ export default function App() {
           <Tile label="Dataset" value="GMD 2025" note={`${info.n_countries} countries · ${info.year_range}`} />
           <Tile label="Input window" value={`${info.window} years`} note={`${info.features.length} macro variables`} />
           <Tile label="Forecast horizon" value={`${info.horizon} years`} note="average inflation, %" />
-          <Tile label="Best model (study)" value={best.Model} note={`mean R² = ${fmt(best['Mean R²'], 3)}`} />
+          {/* update tile */}
+          <Tile label="Best Baseline" value={best?.Model || 'Persistence'} note={`mean R² = ${fmt(best?.['Mean R²'], 3)}`} />
         </section>
       )}
 
@@ -147,7 +144,8 @@ export default function App() {
             <span>{file ? file.name : 'Choose a CSV file…'}</span>
           </label>
           <select value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
-            {(info?.models ?? [{ key: 'RandomForest', label: 'Random Forest', available: true }]).map((m) => (
+            {/* added fallback option */}
+            {(info?.models ?? [{ key: 'Ensemble', label: 'Proposed AOWE Ensemble', available: true }]).map((m) => (
               <option key={m.key} value={m.key} disabled={!m.available}>
                 {m.label}{m.available ? '' : ' (unavailable)'}
               </option>
@@ -210,13 +208,15 @@ function Result({ result }) {
   const last = history[history.length - 1]
 
   const chartData = history.map((h) => ({ year: h.year, Historical: h.infl }))
-  chartData[chartData.length - 1].Forecast = last.infl 
-  for (let y = forecast_start; y <= forecast_end; y += 1) chartData.push({ year: y, Forecast: prediction })
+  if (chartData.length > 0) {
+    chartData[chartData.length - 1].Forecast = last.infl 
+    for (let y = forecast_start; y <= forecast_end; y += 1) chartData.push({ year: y, Forecast: prediction })
+  }
 
   const bars = Object.entries(all_predictions).map(([key, value]) => {
     let name = key;
-    if (key === 'RandomForest') name = 'Random Forest';
-    else if (key === 'GradientBoosting') name = 'Gradient Boosting';
+    if (key === 'Ensemble') name = 'Proposed AOWE';
+    else if (key === 'Custom VAE-Boost') name = 'Custom VAE-Boost';
     return { key, value, name };
   })
 
@@ -280,8 +280,7 @@ function Benchmark({ info }) {
       
       <p className="hint">
         Out-of-sample R² from strict temporal cross-validation (no data leakage). 
-        Tree-based ensemble models like Random Forest demonstrate the highest predictive accuracy based on real data, 
-        while deep learning models struggle even with augmented data.
+        The classical Persistence benchmark dominates, while our proposed AOWE Ensemble and Custom Models provide highly stable and competitive forecasts.
       </p>
       
       <div className="grid2">
@@ -289,7 +288,7 @@ function Benchmark({ info }) {
           <BarChart data={rows} layout="vertical" margin={{ left: 20, right: 30 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} horizontal={false} />
             <XAxis type="number" domain={[-0.8, 0.6]} />
-            <YAxis type="category" dataKey="Model" width={120} tickLine={false} />
+            <YAxis type="category" dataKey="Model" width={140} tickLine={false} />
             <Tooltip formatter={(v) => fmt(v, 3)} cursor={{ fill: 'rgba(128,128,128,.12)' }} />
             <Bar dataKey="Mean R²" radius={4} isAnimationActive={false}>
               {rows.map((r) => <Cell key={r.Model} fill={STUDY_COLORS[r.Model] ?? '#718096'} />)}
